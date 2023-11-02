@@ -107,6 +107,45 @@ public class SSLEngineTest
     private Server server;
     private ServerConnector connector;
 
+public class SpaceCheckingSslConnectionFactory extends SslConnectionFactory
+{
+    public SpaceCheckingSslConnectionFactory(@Name("sslContextFactory") SslContextFactory factory, @Name("next") String nextProtocol)
+    {
+        super(factory, nextProtocol);
+    }
+
+    @Override
+    protected SslConnection newSslConnection(Connector connector, EndPoint endPoint, SSLEngine engine)
+    {
+        return new SslConnection(connector.getByteBufferPool(), connector.getExecutor(), endPoint, engine, isDirectBuffersForEncryption(), isDirectBuffersForDecryption())
+        {
+            @Override
+            protected SSLEngineResult unwrap(SSLEngine sslEngine, ByteBuffer input, ByteBuffer output) throws SSLException
+            {
+                SSLEngineResult results = super.unwrap(sslEngine, input, output);
+
+                if ((results.getStatus() == SSLEngineResult.Status.BUFFER_UNDERFLOW ||
+                    results.getStatus() == SSLEngineResult.Status.OK && results.bytesConsumed() == 0 && results.bytesProduced() == 0) &&
+                    BufferUtil.space(input) == 0)
+                {
+                    BufferUtil.clear(input);
+                    throw new SSLHandshakeException("Encrypted buffer max length exceeded");
+                }
+                return results;
+            }
+        };
+    }
+}
+
+
+
+
+
+
+
+
+
+    
     @BeforeEach
     public void startServer() throws Exception
     {
